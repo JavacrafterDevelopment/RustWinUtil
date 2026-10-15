@@ -21,6 +21,7 @@ const INDEX_HTML: &str = include_str!("../ui/index.html");
 const APP_CSS: &str = include_str!("../ui/app.css");
 const APP_JS: &str = include_str!("../ui/app.js");
 const ICON_RGBA: &[u8] = include_bytes!("../assets/icon-64.rgba");
+const APP_ICONS: &str = include_str!("../assets/app-icons.json");
 
 const PAPER_LIGHT: (u8, u8, u8, u8) = (0xF4, 0xEE, 0xE2, 0xFF);
 const PAPER_DARK: (u8, u8, u8, u8) = (0x12, 0x12, 0x12, 0xFF);
@@ -207,22 +208,24 @@ fn main() {
 /// dark install never flashes light on the way in. WinUtil's config goes along
 /// as data; the page builds the tabs from it, as WinUtil builds its own.
 fn page_html(settings: &Settings) -> String {
-    let mut features = engine::load(engine::FEATURES);
-    if let Some(map) = features.as_object_mut() {
-        for key in engine::LEFT_OUT {
-            map.remove(*key);
-        }
-    }
+    let downloads: serde_json::Map<String, Value> = engine::DOWNLOADS
+        .iter()
+        .map(|(key, who, url)| (key.to_string(), json!({ "who": who, "url": url })))
+        .collect();
     let boot = json!({
         "version": VERSION,
         "settings": settings,
         "elevated": sys::is_elevated(),
         "apps": engine::load(engine::APPLICATIONS),
         "tweaks": engine::load(engine::TWEAKS),
-        "features": features,
+        "features": engine::load(engine::FEATURES),
         "dns": engine::load(engine::DNS),
         "presets": engine::load(engine::PRESETS),
         "appx": engine::load(engine::APPX),
+        // Fetched once by tools/fetch-icons.ps1 and built in: nothing is loaded at run time.
+        "icons": serde_json::from_str::<Value>(APP_ICONS).unwrap_or_default(),
+        "downloads": downloads,
+        "comingSoon": engine::COMING_SOON,
     });
     // `</` inside the data would end the script element early.
     let boot = boot.to_string().replace("</", "<\\/");
@@ -313,12 +316,21 @@ fn on_message(msg: &Value, window: &Window, webview: &WebView, settings: &mut Se
             }
         }
         "openUrl" => {
-            // Only links that are in WinUtil's own app list, never arbitrary strings.
+            // Only links RustWinUtil itself shows: app websites from WinUtil's list,
+            // the download sources, and AppX packages' Microsoft Store pages. Never
+            // arbitrary strings.
             let url = str_of("url");
-            let known = engine::load(engine::APPLICATIONS)
+            let app_link = engine::load(engine::APPLICATIONS)
                 .as_object()
                 .cloned()
                 .is_some_and(|apps| apps.values().any(|a| a["link"].as_str() == Some(url.as_str())));
+            let download = engine::DOWNLOADS.iter().any(|(_, _, u)| *u == url);
+            let store_page = engine::load(engine::APPX).as_object().cloned().is_some_and(|appx| {
+                appx.values().any(|a| {
+                    a["StoreId"].as_str().is_some_and(|id| url == format!("https://apps.microsoft.com/detail/{id}"))
+                })
+            });
+            let known = app_link || download || store_page;
             if known && (url.starts_with("https://") || url.starts_with("http://")) {
                 let _ = sys::shell_open(&url, None);
             }

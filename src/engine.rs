@@ -71,8 +71,33 @@ fn function_call(key: &str) -> Option<&'static str> {
     })
 }
 
-/// The feature-panel entries RustWinUtil doesn't offer. See [`function_call`].
-pub const LEFT_OUT: &[&str] = &["WPFWinUtilInstallPSProfile", "WPFWinUtilUninstallPSProfile"];
+/// Entries shown in place but not offered yet. The PowerShell-profile buttons
+/// download Chris Titus Tech's own script, which RustWinUtil doesn't do.
+pub const COMING_SOON: &[&str] = &["WPFWinUtilInstallPSProfile", "WPFWinUtilUninstallPSProfile"];
+
+/// Everything that downloads something while it runs: the entry, who from, and
+/// the address. Shown beside the entry and logged before it runs. None of it is
+/// from WinUtil's own sources.
+pub const DOWNLOADS: &[(&str, &str, &str)] = &[
+    ("WPFOOSUbutton", "O&O Software", "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe"),
+    ("WPFPanelAutologin", "Microsoft Sysinternals", "https://live.sysinternals.com/Autologon.exe"),
+    (
+        "WPFTweaksBlockAdobeNet",
+        "Ruddernation-Designs on GitHub",
+        "https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts",
+    ),
+    (
+        "WPFFixesWinget",
+        "Microsoft, through the PowerShell Gallery",
+        "https://www.powershellgallery.com/packages/Microsoft.WinGet.Client",
+    ),
+];
+
+fn log_download(engine: &Engine, key: &str) {
+    if let Some((_, who, url)) = DOWNLOADS.iter().find(|(k, _, _)| *k == key) {
+        engine.log("info", format!("Downloads from {who}: {url}"));
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Manager {
@@ -398,6 +423,9 @@ impl Engine {
     fn apply_tweak(&self, key: &str, undo: bool) -> Result<(), String> {
         let tweak = self.tweaks.get(key).ok_or_else(|| format!("unknown tweak {key}"))?;
         self.log("info", format!("{} {}", if undo { "Undoing" } else { "Applying" }, s(tweak, "Content")));
+        if !undo {
+            log_download(self, key);
+        }
         let mut errors = 0;
 
         for svc in list(tweak, "service") {
@@ -574,6 +602,7 @@ impl Engine {
 
     fn call_function(&self, key: &str) -> Result<(), String> {
         let call = function_call(key).ok_or_else(|| format!("RustWinUtil has no action for {key}"))?;
+        log_download(self, key);
         self.run_script(call)
     }
 

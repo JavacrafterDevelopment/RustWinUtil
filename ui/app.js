@@ -100,10 +100,43 @@ function renderApps() {
   renderSelection();
 }
 
+/* Which package an install fetches, and from where, for the card's tooltip. */
+function packageLine(a) {
+  const choco = BOOT.settings.packageManager === 'choco';
+  const raw = (choco ? a.choco : a.winget) || '';
+  const id = raw.split(';').pop().trim();
+  if (!id || id === 'na') return `Not available with ${choco ? 'Chocolatey' : 'WinGet'}.`;
+  if (choco) return `Installs with Chocolatey: ${id} (community.chocolatey.org/packages/${id})`;
+  if (id.startsWith('msstore:')) return `Installs with WinGet from the Microsoft Store: ${id.slice(8)}`;
+  return `Installs with WinGet: ${id}, from its publisher's own download`;
+}
+
+/* Where an entry downloads from while it runs, as a line under it. */
+function sourceLine(key) {
+  const d = BOOT.downloads && BOOT.downloads[key];
+  if (!d) return null;
+  const s = h('span', 'src', `↓ Downloads from ${d.who}`);
+  s.title = `${d.url}\nClick to open the address.`;
+  s.addEventListener('click', () => post({ cmd: 'openUrl', url: d.url }));
+  return s;
+}
+
+const comingSoon = (key) => (BOOT.comingSoon || []).includes(key);
+
 function appCard(a) {
   const card = h('button', `appcard${state.selectedApps.has(a.key) ? ' sel' : ''}`);
-  card.title = `${a.description || ''}${a.link ? `\n\n${a.link}\nDouble-click to open its website.` : ''}`;
-  card.append(h('span', 'tile', a.content[0]));
+  card.title = `${a.description || ''}\n\n${packageLine(a)}${a.link ? `\nWebsite: ${a.link}\nDouble-click to open its website.` : ''}`;
+  const icon = BOOT.icons && BOOT.icons[a.key];
+  if (icon) {
+    const tile = h('span', 'tile icon');
+    const img = h('img');
+    img.src = icon; // built in; nothing is loaded from the internet
+    img.alt = '';
+    tile.append(img);
+    card.append(tile);
+  } else {
+    card.append(h('span', 'tile', a.content[0]));
+  }
   const name = h('span', 'name', a.content);
   if (a.foss) name.append(h('span', 'foss-dot'));
   card.append(name);
@@ -196,8 +229,20 @@ function tweakItem(e) {
   if (e.Type === 'Button') {
     const b = h('button', 'btn action', e.Content);
     b.title = e.Description || '';
+    // Kept in its place, switched off until it's built.
+    if (comingSoon(e.key)) {
+      b.disabled = true;
+      b.classList.add('soonbtn');
+      b.append(h('span', 'soon', 'Coming soon'));
+      b.title = `${e.Description || ''}\n\nComing soon.`;
+      return b;
+    }
     b.addEventListener('click', () => runButton(e));
-    return b;
+    const src = sourceLine(e.key);
+    if (!src) return b;
+    const wrap = h('div', 'btnwrap');
+    wrap.append(b, src);
+    return wrap;
   }
   if (e.Type === 'Combobox') {
     row.append(h('span', 'label', e.Content));
@@ -227,7 +272,11 @@ function tweakItem(e) {
   label.htmlFor = id;
   row.append(box, label, helpMark(e.Description));
   if (state.appliedTweaks.has(e.key)) row.classList.add('applied');
-  return row;
+  const src = sourceLine(e.key);
+  if (!src) return row;
+  const wrap = h('div');
+  wrap.append(row, src);
+  return wrap;
 }
 
 function renderGroups(target, groups) {
@@ -315,6 +364,14 @@ function renderAppx() {
       label.htmlFor = box.id;
       if (state.installedAppx.has(a.key)) label.append(h('span', 'installed', 'installed'));
       row.append(box, label, helpMark(a.Description));
+      if (a.StoreId) {
+        // Reinstall Selected gets it from here.
+        const url = `https://apps.microsoft.com/detail/${a.StoreId}`;
+        const store = h('span', 'store', 'Store page ↗');
+        store.title = `Reinstalls from the Microsoft Store:\n${url}`;
+        store.addEventListener('click', () => post({ cmd: 'openUrl', url }));
+        row.append(store);
+      }
       g.append(row);
     }
     return g;

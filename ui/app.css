@@ -594,3 +594,60 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 .grip.se { bottom: 0; right: 0; cursor: nwse-resize; }
 .grip.ne { top: 0; right: 0; cursor: nesw-resize; }
 .grip.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+/* ------------------------------------------------- coming soon & sources */
+
+.soon {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--gilt-wash);
+  color: var(--walnut-deep);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.tab.on .soon { background: var(--on-accent); color: var(--walnut); }
+.soon.big { margin: 0; padding: 3px 12px; font-size: 11.5px; }
+
+.comingsoon {
+  width: min(720px, 100%);
+  margin: 40px auto 0;
+  padding: 34px 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.comingsoon .title { font-family: var(--serif); font-weight: normal; font-size: 30px; color: var(--walnut-deep); }
+.comingsoon .lede { font-size: 14px; line-height: 1.65; color: var(--ink-soft); }
+.comingsoon .aside { font-size: 12.5px; color: var(--ink-faint); font-style: italic; }
+
+.btn.action.soonbtn { opacity: .6; }
+
+/* Where an entry downloads from, under it. Click to open the address. */
+.src {
+  display: block;
+  margin: -1px 0 4px 23px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src:hover { color: var(--walnut-deep); text-decoration: underline; }
+.btnwrap .src { margin-left: 2px; }
+
+/* Bundled app icons sit on a light plate so dark logos read in dark mode. */
+.appcard .tile.icon { background: #FFFFFF; padding: 5px; }
+.appcard .tile.icon img { width: 100%; height: 100%; object-fit: contain; }
+
+.appx-row .store { margin-left: auto; font-size: 11px; color: var(--ink-faint); cursor: pointer; }
+.appx-row .store:hover { color: var(--walnut-deep); text-decoration: underline; }

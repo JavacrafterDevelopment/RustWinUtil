@@ -28,6 +28,7 @@
         <button class="tab" data-tab="tweaks">Tweaks</button>
         <button class="tab" data-tab="config">Config</button>
         <button class="tab" data-tab="updates">Updates</button>
+        <button class="tab" data-tab="win11" title="Coming soon">Win11 Creator <span class="soon">Soon</span></button>
       </nav>
 
       <div id="searchwrap">
@@ -198,6 +199,21 @@
           </div>
           <div class="panel note center">Changes apply system-wide. Restart Windows after switching
             profiles. Use Restore Defaults to undo RustWinUtil update policies.</div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------- win11 creator -->
+      <!-- Coming soon: WinUtil's Windows 11 ISO builder (select ISO, modify image,
+           output). The tab holds its place so the feature can drop in later. -->
+      <section id="tab-win11" class="view">
+        <div class="comingsoon panel">
+          <span class="soon big">Coming soon</span>
+          <h1 class="title">Win11 Creator</h1>
+          <p class="lede">Building a customised Windows 11 installer from an ISO, as in WinUtil's
+            Win11 Creator: pick an ISO, choose what to strip out and set up, then write a new ISO
+            or a bootable USB. Your original ISO will never be modified.</p>
+          <p class="aside">It isn't in this version yet. RustWinUtil's updates arrive through the
+            Javacrafter Launcher.</p>
         </div>
       </section>
     </main>

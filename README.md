@@ -44,16 +44,33 @@ installs them when you press **Update**.
 Every action runs as a job, one at a time, and the log at the bottom shows what it's
 doing as it does it.
 
-**Left out** for now:
+**Coming soon** (in place in the window, not working yet):
 
-- **Win11 Creator** (building a customised Windows ISO).
-- **CTT PowerShell Profile** install/remove: those download Chris Titus Tech's own
-  profile script, and RustWinUtil fetches nothing from WinUtil's sources.
-- App icons, which WinUtil downloads from the internet; cards carry the app's initial.
+- **Win11 Creator**, the tab for building a customised Windows 11 ISO.
+- **CTT PowerShell Profile** install/remove (Config): shown but switched off. As
+  WinUtil has them, they download Chris Titus Tech's own profile script, which
+  RustWinUtil doesn't do.
 
-Some actions still need the internet by nature, from their own vendors: installing
-apps (WinGet, Chocolatey), O&O ShutUp10++ (from O&O), AutoLogon (from Microsoft's
-Sysinternals) and the Adobe URL block list.
+**App icons** are built in. WinUtil loads them live from Google's favicon service
+each time it opens; RustWinUtil fetched them once with
+[tools/fetch-icons.ps1](tools/fetch-icons.ps1) (kept only if they're genuine PNGs)
+into `assets/app-icons.json`, so it never goes online for them. Apps without a
+usable icon show their initial.
+
+### Where things download from
+
+Nothing comes from WinUtil's own repository or website. These actions need the
+internet by nature, and each one shows its source under it and logs the address
+before it runs:
+
+| Action | Downloads from |
+|---|---|
+| O&O ShutUp10++ - Run | O&O Software: `https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe` |
+| AutoLogon - Run | Microsoft Sysinternals: `https://live.sysinternals.com/Autologon.exe` |
+| Adobe URL Block List - Enable | Ruddernation-Designs: `https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts` |
+| WinGet - Reinstall | Microsoft's `Microsoft.WinGet.Client` module from the PowerShell Gallery: `https://www.powershellgallery.com/packages/Microsoft.WinGet.Client` |
+| Installing apps | WinGet or Chocolatey, from each app's publisher. Each card's tooltip names the package and the app's website. |
+| AppX Reinstall Selected | The Microsoft Store; each row links its Store page. |
 
 ## How it works
 
@@ -78,7 +95,7 @@ src/sys.rs        registry, services, child processes, elevation, one instance
 src/prelude.ps1   stand-ins for WinUtil's GUI plumbing in its scripts
 ui/               the page (index.html, app.css, app.js), built into the exe
 winutil/          WinUtil's config and scripts, with its license
-tools/            icon, release packaging and update.json
+tools/            icons (ours and the apps'), release packaging, update.json
 ```
 
 ## Building
@@ -129,6 +146,7 @@ dual licensed as above, without any additional terms or conditions.
 | Path | From | License |
 |---|---|---|
 | `winutil/config/`, `winutil/functions/` | [WinUtil](https://github.com/ChrisTitusTech/winutil), Copyright (c) 2022 CT Tech Group LLC | MIT ([winutil/LICENSE](winutil/LICENSE)) |
+| `assets/app-icons.json` | Each app's own icon, as served by its website | The logos belong to their owners; they're shown only to identify each app, and aren't covered by the license above. |
 
 Release builds also contain the Rust crates in `Cargo.lock` (permissive licenses, mostly
 MIT OR Apache-2.0) and carry both RustWinUtil's and WinUtil's license texts in a
