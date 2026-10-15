@@ -19,6 +19,9 @@
   --walnut-wash:  #EFE4D0;
   --gilt:         #A8843F;
   --gilt-wash:    #EFE0BC;
+  /* Accent text: walnut and gilt by day, blue by night (see the dark block). */
+  --accent-text:  #4A3524;
+  --accent-soft:  #A8843F;
   --danger:       #8C3A2B;
   --danger-wash:  #F2DDD3;
   --ok:           #6E8C4A;
@@ -54,7 +57,10 @@
   --walnut-wash:  #2A2418;
   --gilt:         #D9B26A;
   --gilt-wash:    #3A3020;
-  --danger:       #D0644E;
+  /* Headings and accent text in blue rather than gold at night; gold fills stay. */
+  --accent-text:  #8CC4FF;
+  --accent-soft:  #5AA9F0;
+  --danger:       #E5534B;
   --danger-wash:  #34201B;
   --ok:           #8FB866;
   --ok-wash:      #1F2A19;
@@ -220,7 +226,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   font-weight: normal;
   font-size: 17px;
   letter-spacing: .02em;
-  color: var(--walnut-deep);
+  color: var(--accent-text);
 }
 
 .columns { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -306,7 +312,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   padding: 6px 0 8px;
   border: 0;
   background: transparent;
-  color: var(--walnut-deep);
+  color: var(--accent-text);
 }
 
 .cat-head .heading { font-size: 17px; }
@@ -346,7 +352,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   background: linear-gradient(160deg, var(--walnut) 0%, var(--walnut-deep) 100%);
 }
 
-:root[data-theme="dark"] .appcard .tile { color: var(--gilt); background: linear-gradient(160deg, #2C2C2C 0%, #1F1F1F 100%); }
+:root[data-theme="dark"] .appcard .tile { color: var(--accent-soft); background: linear-gradient(160deg, #2C2C2C 0%, #1F1F1F 100%); }
 
 .appcard .name { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appcard .foss-dot { margin-left: 4px; }
@@ -402,7 +408,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   place-items: center;
 }
 
-.help:hover { color: var(--walnut-deep); border-color: var(--gilt); }
+.help:hover { color: var(--accent-text); border-color: var(--gilt); }
 
 .switch {
   appearance: none;
@@ -457,7 +463,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 /* ----------------------------------------------------------------- updates */
 
 .updates { width: min(1100px, 100%); margin: 0 auto; padding: 10px 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overflow-x: hidden; }
-.updates .title { font-family: var(--serif); font-weight: normal; font-size: 28px; color: var(--walnut-deep); }
+.updates .title { font-family: var(--serif); font-weight: normal; font-size: 28px; color: var(--accent-text); }
 .updates .lede { color: var(--ink-soft); font-size: 14px; }
 
 .profiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
@@ -475,7 +481,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 }
 
 .profile.recommended { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok), var(--shadow-soft); }
-.profile h2 { font-family: var(--serif); font-weight: normal; font-size: 22px; color: var(--walnut-deep); }
+.profile h2 { font-family: var(--serif); font-weight: normal; font-size: 22px; color: var(--accent-text); }
 .profile.risky h2, .profile.risky .sub, .profile.risky .aside { color: var(--danger); }
 .profile .sub { font-size: 14px; color: var(--ink-soft); }
 .profile ul { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-top: 8px; font-size: 13px; color: var(--ink-soft); }
@@ -509,9 +515,9 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 #log .line { display: flex; gap: 12px; }
 #log .t { flex: 0 0 auto; color: var(--ink-ghost); }
 #log .x { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-#log .head .x { color: var(--walnut-deep); font-weight: 600; }
+#log .head .x { color: var(--accent-text); font-weight: 600; }
 #log .ok .x { color: var(--ok); }
-#log .warn .x { color: var(--gilt); }
+#log .warn .x { color: var(--accent-soft); }
 #log .error .x { color: var(--danger); }
 
 #status {
@@ -576,7 +582,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   box-shadow: 0 18px 50px var(--shadow-drop);
 }
 
-#dialog h2 { font-family: var(--serif); font-weight: normal; font-size: 19px; color: var(--walnut-deep); margin-bottom: 8px; }
+#dialog h2 { font-family: var(--serif); font-weight: normal; font-size: 19px; color: var(--accent-text); margin-bottom: 8px; }
 #dialog p { font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
 /* What the question will act on: the apps, tweaks or packages, by name. */
 .dlg-list {
@@ -618,7 +624,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--gilt-wash);
-  color: var(--walnut-deep);
+  color: var(--accent-text);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -639,7 +645,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   gap: 12px;
 }
 
-.comingsoon .title { font-family: var(--serif); font-weight: normal; font-size: 30px; color: var(--walnut-deep); }
+.comingsoon .title { font-family: var(--serif); font-weight: normal; font-size: 30px; color: var(--accent-text); }
 .comingsoon .lede { font-size: 14px; line-height: 1.65; color: var(--ink-soft); }
 .comingsoon .aside { font-size: 12.5px; color: var(--ink-faint); font-style: italic; }
 
@@ -657,7 +663,7 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
   text-overflow: ellipsis;
 }
 
-.src:hover { color: var(--walnut-deep); text-decoration: underline; }
+.src:hover { color: var(--accent-text); text-decoration: underline; }
 .btnwrap .src { margin-left: 2px; }
 
 /* Bundled app icons sit on a light plate so dark logos read in dark mode. */
@@ -665,4 +671,8 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 .appcard .tile.icon img { width: 100%; height: 100%; object-fit: contain; }
 
 .appx-row .store { margin-left: auto; font-size: 11px; color: var(--ink-faint); cursor: pointer; }
-.appx-row .store:hover { color: var(--walnut-deep); text-decoration: underline; }
+.appx-row .store:hover { color: var(--accent-text); text-decoration: underline; }
+
+/* Night: the badge sits on dark blue to match its blue text. */
+:root[data-theme="dark"] .soon { background: #16263A; }
+:root[data-theme="dark"] .tab.on .soon { background: var(--on-accent); color: var(--walnut); }
