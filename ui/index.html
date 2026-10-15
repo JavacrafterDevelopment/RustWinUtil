@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="{{THEME}}">
+<head>
+  <meta charset="utf-8">
+  <title>RustWinUtil</title>
+  <style>/*{{CSS}}*/</style>
+  <script>/*{{BOOT}}*/</script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- WinUtil's top bar: mark, tabs, search, theme, window buttons. The whole
+         band drags the window except the controls on it. -->
+    <header id="top">
+      <svg id="mark" width="34" height="34" viewBox="0 0 48 48" aria-hidden="true">
+        <path class="shield" d="M6 6h36v16c0 12-8 19-18 23.5C14 41 6 34 6 22z"/>
+        <path class="face" d="M9.5 9.5h29V22c0 10-6.5 16-14.5 19.6C16 38 9.5 32 9.5 22z"/>
+        <g class="wrench" transform="translate(24 24) rotate(-45)">
+          <rect x="-2.6" y="-2" width="5.2" height="16.5"/>
+          <circle cx="0" cy="14.6" r="2.6"/>
+          <circle cx="0" cy="-6.8" r="7.2"/>
+          <rect class="jaw" x="-2.4" y="-15.5" width="4.8" height="8"/>
+        </g>
+      </svg>
+
+      <nav id="tabs">
+        <button class="tab on" data-tab="install">Install</button>
+        <button class="tab" data-tab="tweaks">Tweaks</button>
+        <button class="tab" data-tab="config">Config</button>
+        <button class="tab" data-tab="updates">Updates</button>
+      </nav>
+
+      <div id="searchwrap">
+        <svg width="14" height="14" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+          <circle cx="6.4" cy="6.4" r="4.6" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M9.9 9.9l3.4 3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <input id="search" type="text" spellcheck="false" autocomplete="off" placeholder="Search apps and tweaks">
+      </div>
+
+      <span class="grow"></span>
+
+      <button class="iconbtn" id="theme" title="Light or dark">
+        <svg class="sun" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+          <circle cx="8" cy="8" r="3"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M3.2 12.8l1.1-1.1M11.7 4.3l1.1-1.1"/>
+        </svg>
+        <svg class="moon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13.5 9.6A6 6 0 1 1 6.4 2.5a4.8 4.8 0 0 0 7.1 7.1z"/>
+        </svg>
+      </button>
+
+      <div id="winbtns">
+        <button class="winbtn" data-win="minimize" title="Minimise">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="winbtn" data-win="maximize" title="Maximise">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="winbtn close" data-win="close" title="Close">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.4 1.4l7.2 7.2M8.6 1.4L1.4 8.6" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="notadmin" class="banner">
+      RustWinUtil isn't running as administrator, so most changes will fail. Close it and
+      open it again, and accept the Windows prompt.
+    </div>
+
+    <main id="body">
+
+      <!-- ---------------------------------------------------------- install -->
+      <section id="tab-install" class="view on">
+        <div class="filters">
+          <span class="heading">Filters</span>
+          <div id="chips" class="chips"></div>
+        </div>
+        <div class="install">
+          <aside class="panel sidebar">
+            <h3 class="heading">Actions</h3>
+            <button class="btn primary wide" id="act-install">Install/Upgrade Applications</button>
+            <button class="btn wide" id="act-uninstall">Uninstall Applications</button>
+            <button class="btn wide" id="act-upgrade">Upgrade all Applications</button>
+
+            <h3 class="heading">Package Manager</h3>
+            <label class="radio"><input type="radio" name="pm" value="choco"> Chocolatey</label>
+            <label class="radio"><input type="radio" name="pm" value="winget"> WinGet</label>
+
+            <h3 class="heading">Selection</h3>
+            <div class="legend"><span class="foss-dot"></span> Free and Open Source Software</div>
+            <button class="btn wide" id="sel-clear">Clear Selection</button>
+            <button class="btn wide" id="sel-collapse">Collapse All Categories</button>
+            <button class="btn wide" id="sel-expand">Expand All Categories</button>
+            <button class="btn wide" id="sel-count">Selected Apps: 0</button>
+            <div id="sel-list" class="sel-list"></div>
+            <button class="btn wide" id="sel-installed">Show Installed Apps</button>
+          </aside>
+          <div class="panel scroller" id="apps"></div>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------------- tweaks -->
+      <section id="tab-tweaks" class="view">
+        <div class="presets">
+          <span class="label">Recommended Selections:</span>
+          <div class="row">
+            <button class="btn" data-preset="Standard">Standard</button>
+            <button class="btn" data-preset="Minimal">Minimal</button>
+            <button class="btn" data-preset="Advanced">Advanced</button>
+            <button class="btn" id="tw-clear">Clear</button>
+            <button class="btn" id="tw-detect">Get Installed Tweaks</button>
+            <button class="btn" id="tw-appx">AppX Removal</button>
+          </div>
+        </div>
+        <div class="columns">
+          <div class="panel scroller" id="tweaks-1"></div>
+          <div class="panel scroller" id="tweaks-2"></div>
+        </div>
+        <div class="panel note">
+          Note: Hover over items to get a better description. Please be careful as many of these
+          tweaks will heavily modify your system.<br>
+          Recommended selections are for normal users and if you are unsure do NOT check anything else!
+        </div>
+        <div class="runbar">
+          <button class="btn primary" id="tw-run">Run Tweaks</button>
+          <button class="btn" id="tw-undo">Undo Selected Tweaks</button>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------ appx removal -->
+      <section id="tab-appx" class="view">
+        <div class="presets">
+          <span class="label">AppX Removal: built-in Windows apps, removed for every user.</span>
+          <div class="row">
+            <button class="btn" id="ax-back">← Back to Tweaks</button>
+            <button class="btn" id="ax-default">Select Default</button>
+            <button class="btn" id="ax-all">Select All</button>
+            <button class="btn" id="ax-clear">Clear</button>
+            <button class="btn" id="ax-detect">Get Installed AppX</button>
+          </div>
+        </div>
+        <div class="panel scroller" id="appx"></div>
+        <div class="runbar">
+          <button class="btn danger" id="ax-remove">Remove Selected</button>
+          <button class="btn" id="ax-reinstall">Reinstall Selected</button>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------------- config -->
+      <section id="tab-config" class="view">
+        <div class="columns">
+          <div class="panel scroller" id="config-1"></div>
+          <div class="panel scroller" id="config-2"></div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- updates -->
+      <section id="tab-updates" class="view">
+        <div class="updates">
+          <h1 class="title">Windows Update Profiles</h1>
+          <p class="lede">Choose how Windows receives updates. Each profile replaces the Windows Update
+            settings managed by RustWinUtil.</p>
+          <div class="profiles">
+            <div class="profile recommended">
+              <h2>Recommended</h2>
+              <p class="sub">Balanced security and stability</p>
+              <ul>
+                <li>Defers feature updates for 365 days</li>
+                <li>Defers quality updates for 4 days</li>
+                <li>Excludes drivers from quality updates</li>
+                <li>Prevents automatic restarts while a user is signed in</li>
+              </ul>
+              <p class="aside">Available on Windows Pro, Enterprise, and Education editions.</p>
+              <button class="btn primary" data-update="recommended">Apply Recommended</button>
+            </div>
+            <div class="profile">
+              <h2>Windows Default</h2>
+              <p class="sub">Return control to Windows</p>
+              <ul>
+                <li>Removes Windows Update policies applied by RustWinUtil</li>
+                <li>Restores update service startup settings</li>
+                <li>Re-enables update scheduled tasks</li>
+              </ul>
+              <p class="aside">Use this to undo the Recommended or Disable profile.</p>
+              <button class="btn" data-update="default">Restore Defaults</button>
+            </div>
+            <div class="profile risky">
+              <h2>Disable Updates</h2>
+              <p class="sub">Advanced use only</p>
+              <ul>
+                <li>Disables automatic update policy</li>
+                <li>Stops update services and scheduled tasks</li>
+                <li>Clears downloaded update files</li>
+              </ul>
+              <p class="aside">Security updates will not be installed while this profile is active.</p>
+              <button class="btn danger" data-update="disable">Disable Updates</button>
+            </div>
+          </div>
+          <div class="panel note center">Changes apply system-wide. Restart Windows after switching
+            profiles. Use Restore Defaults to undo RustWinUtil update policies.</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Everything a job does, as it does it. Opens on its own when work starts. -->
+    <div id="logwrap">
+      <div id="log"></div>
+    </div>
+
+    <footer id="status">
+      <span id="lamp"></span>
+      <span id="statusText">Ready</span>
+      <div class="progress" id="progress"><div class="bar" id="bar"></div></div>
+      <span class="grow"></span>
+      <button class="statusbtn" id="logtoggle" title="Show or hide the log">
+        <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+          <path d="M2 6.5 5 3.5 8 6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Log
+      </button>
+      <span id="version"></span>
+    </footer>
+  </div>
+
+  <div id="dialogwrap">
+    <div id="dialog" role="dialog">
+      <h2 id="dlg-title"></h2>
+      <p id="dlg-text"></p>
+      <div class="dlg-actions">
+        <button class="btn" id="dlg-cancel">Cancel</button>
+        <button class="btn danger" id="dlg-ok">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The webview fills the window, so the window never sees a hit test near its
+       border. These invisible strips sit on top and hand the resize back. -->
+  <div class="grips">
+    <div class="grip n"  data-dir="n"></div>
+    <div class="grip s"  data-dir="s"></div>
+    <div class="grip w"  data-dir="w"></div>
+    <div class="grip e"  data-dir="e"></div>
+    <div class="grip nw" data-dir="nw"></div>
+    <div class="grip ne" data-dir="ne"></div>
+    <div class="grip sw" data-dir="sw"></div>
+    <div class="grip se" data-dir="se"></div>
+  </div>
+
+  <script>/*{{JS}}*/</script>
+</body>
+</html>

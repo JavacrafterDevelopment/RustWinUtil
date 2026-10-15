@@ -1,0 +1,5 @@
+/target
+/dist
+/release
+# Settings, logs and the WebView2 profile, if run from the repo root.
+/data
