@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "channels": {
+    "beta": {
+      "version": "0.0.1",
+      "published": "2026-10-15T03:48:12Z",
+      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/commits/v0.0.1",
+      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.1",
+      "package": {
+        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.1/RustWinUtil-windows-x64.zip",
+        "size": 529648,
+        "sha256": "c45c238f8814350c0df53381530df54c7f56740c123001d46d6559390e00c4b0"
+      },
+      "exe": "RustWinUtil.exe",
+      "files": [
+        {
+          "path": "licenses/LICENSE-APACHE",
+          "size": 11560,
+          "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+        },
+        {
+          "path": "licenses/LICENSE-MIT",
+          "size": 1100,
+          "sha256": "fed465d19758687fabfc1b1d6cdcb36b08c795aaf87bcb2185f2cd4ca2f282f3"
+        },
+        {
+          "path": "licenses/WinUtil-LICENSE.txt",
+          "size": 1095,
+          "sha256": "61512a5ea110165ce800d00d2d85bbf1af0dc3ccc5d453ae8b5fe9ae20e6c5b5"
+        },
+        {
+          "path": "RustWinUtil.exe",
+          "size": 1210368,
+          "sha256": "57ac854b8fbb646241d44fc4b5c21a4b78f99628c45278c809faa56881631335"
+        }
+      ]
+    },
+    "stable": {
+      "version": "0.0.1",
+      "published": "2026-10-15T03:48:12Z",
+      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/commits/v0.0.1",
+      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.1",
+      "package": {
+        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.1/RustWinUtil-windows-x64.zip",
+        "size": 529648,
+        "sha256": "c45c238f8814350c0df53381530df54c7f56740c123001d46d6559390e00c4b0"
+      },
+      "exe": "RustWinUtil.exe",
+      "files": [
+        {
+          "path": "licenses/LICENSE-APACHE",
+          "size": 11560,
+          "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+        },
+        {
+          "path": "licenses/LICENSE-MIT",
+          "size": 1100,
+          "sha256": "fed465d19758687fabfc1b1d6cdcb36b08c795aaf87bcb2185f2cd4ca2f282f3"
+        },
+        {
+          "path": "licenses/WinUtil-LICENSE.txt",
+          "size": 1095,
+          "sha256": "61512a5ea110165ce800d00d2d85bbf1af0dc3ccc5d453ae8b5fe9ae20e6c5b5"
+        },
+        {
+          "path": "RustWinUtil.exe",
+          "size": 1210368,
+          "sha256": "57ac854b8fbb646241d44fc4b5c21a4b78f99628c45278c809faa56881631335"
+        }
+      ]
+    }
+  }
+}
