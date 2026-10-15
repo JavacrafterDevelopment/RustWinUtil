@@ -28,6 +28,12 @@ Only one copy runs per folder: opening it again brings the open window forward.
 `RustWinUtil.exe --quit` asks the running copy to close, even when it's running as
 administrator; the Javacrafter Launcher's **Stop** button uses it.
 
+Closing it in the middle of a job (✕, Alt+F4 or `--quit`) doesn't cut the job off.
+It asks first, and **Close when done** hides the window and exits once the work has
+finished; opening it again before then brings the window back. `--quit` exits with 0
+when it asked the running copy to close, 1 when none is running, and 2 when that copy
+is busy and asking in its own window instead.
+
 It's in the Javacrafter Launcher's library, which installs it, shows its updates and
 installs them when you press **Update**.
 
@@ -42,7 +48,18 @@ installs them when you press **Update**.
 | **Updates** | WinUtil's three Windows Update profiles: Recommended, Windows Default and Disable Updates. |
 
 Every action runs as a job, one at a time, and the log at the bottom shows what it's
-doing as it does it.
+doing as it does it. A second install, tweak run, fix or removal can't be started
+while one is under way; toggles and drop-downs queue behind it.
+
+**Run Tweaks** works in WinUtil's order: **Restore Point - Create** first (so the
+restore point holds the state from before the run), then the **DNS** provider picked
+beside the tweaks, then the rest. If the restore point or the DNS change fails, the
+run stops there. The DNS drop-down only takes effect with Run Tweaks: *Default*
+leaves DNS as it is, *DHCP* goes back to the automatic DNS your network hands out.
+
+**Windows Update - Reset**, **Network - Reset** and **Ultimate Performance Profile -
+Disable** say what they'll change and ask first, and the Uninstall, Undo and AppX
+removal prompts list exactly what they'll act on.
 
 **Coming soon** (in place in the window, not working yet):
 
@@ -83,10 +100,15 @@ before it runs:
 - **PowerShell only for WinUtil's scripts.** Tweaks and fixes that carry PowerShell
   run it with WinUtil's own helper functions (`winutil/functions/`, unchanged) and
   RustWinUtil's small stand-ins for the parts of WinUtil's window they expect
-  ([src/prelude.ps1](src/prelude.ps1)).
+  ([src/prelude.ps1](src/prelude.ps1)). Anything a script writes to its error stream
+  shows in the log as an error and marks that step as failed. Each script, and
+  anything it downloads, runs from a fresh folder under `%SystemRoot%\Temp` that only
+  administrators can open, so nothing unelevated can swap it out first; a copy of the
+  last one is kept as `data\run\last-job.ps1` for reading.
 - **The window** is a borderless [tao](https://github.com/tauri-apps/tao) window with
   a [wry](https://github.com/tauri-apps/wry) WebView2 page, built the same way as the
-  launcher.
+  launcher. It only ever shows its own page: it doesn't follow links, files or links
+  dropped on it are ignored, and only its own page can send it commands.
 
 ```
 src/main.rs       window, settings, messages between page and host

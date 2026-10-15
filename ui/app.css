@@ -578,6 +578,21 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
 
 #dialog h2 { font-family: var(--serif); font-weight: normal; font-size: 19px; color: var(--walnut-deep); margin-bottom: 8px; }
 #dialog p { font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+/* What the question will act on: the apps, tweaks or packages, by name. */
+.dlg-list {
+  display: none;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding: 8px 12px 8px 28px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--paper);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.dlg-list.on { display: block; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 /* ------------------------------------------------------------ resize grips */

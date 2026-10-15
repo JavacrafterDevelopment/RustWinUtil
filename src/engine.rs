@@ -9,7 +9,9 @@
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use std::cell::Cell;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
 
 use crate::sys;
@@ -93,6 +95,70 @@ pub const DOWNLOADS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Taken before anything else in a run, as WinUtil does, so it holds the state the
+/// rest of the run changes.
+const RESTORE_POINT: &str = "WPFTweaksRestorePoint";
+
+/// The order Run Tweaks works in: the restore point first, then the rest as ticked.
+fn run_order(keys: &[String]) -> Vec<&str> {
+    let (first, rest): (Vec<&str>, Vec<&str>) = keys.iter().map(String::as_str).partition(|k| *k == RESTORE_POINT);
+    first.into_iter().chain(rest).collect()
+}
+
+/// What a package manager's exit code means for one package.
+#[derive(Debug, PartialEq)]
+enum Outcome {
+    Done,
+    /// Done, but Windows has to restart to finish.
+    Restart,
+    /// There was nothing to do.
+    Nothing(&'static str),
+    /// Left as it was, for a reason worth reading, but not a failure.
+    Skipped(&'static str),
+    Failed(String),
+}
+
+// WinGet's own exit codes, from AppInstallerErrors.h in microsoft/winget-cli.
+const WINGET_NO_APPLICATIONS_FOUND: i32 = 0x8A15_0014_u32 as i32;
+const WINGET_UPDATE_NOT_APPLICABLE: i32 = 0x8A15_002B_u32 as i32;
+const WINGET_PACKAGE_ALREADY_INSTALLED: i32 = 0x8A15_0061_u32 as i32;
+const WINGET_ADMIN_CONTEXT_ACTION_PROHIBITED: i32 = 0x8A15_007D_u32 as i32;
+const WINGET_INSTALL_REBOOT_REQUIRED_TO_FINISH: i32 = 0x8A15_0109_u32 as i32;
+const WINGET_INSTALL_REBOOT_INITIATED: i32 = 0x8A15_010B_u32 as i32;
+
+/// `action` is WinGet's verb: install, uninstall or upgrade.
+fn winget_outcome(code: i32, action: &str) -> Outcome {
+    let uninstall = action == "uninstall";
+    match code {
+        0 => Outcome::Done,
+        // Installers' own "restart to finish" codes come through unchanged.
+        3010 | 1641 | WINGET_INSTALL_REBOOT_REQUIRED_TO_FINISH | WINGET_INSTALL_REBOOT_INITIATED => Outcome::Restart,
+        WINGET_UPDATE_NOT_APPLICABLE | WINGET_PACKAGE_ALREADY_INSTALLED if !uninstall => {
+            Outcome::Nothing("already installed and up to date")
+        }
+        WINGET_NO_APPLICATIONS_FOUND if uninstall => Outcome::Skipped("not installed, so there was nothing to remove"),
+        WINGET_NO_APPLICATIONS_FOUND => Outcome::Failed("WinGet couldn't find this package, so nothing was installed".into()),
+        // WinGet won't touch an app installed for one user from an elevated program.
+        WINGET_ADMIN_CONTEXT_ACTION_PROHIBITED if uninstall => Outcome::Failed(
+            "installed for your user account only, and WinGet won't remove it from an administrator app; \
+             uninstall it from Windows Settings instead"
+                .into(),
+        ),
+        WINGET_ADMIN_CONTEXT_ACTION_PROHIBITED => {
+            Outcome::Skipped("already installed for your user account only; WinGet won't change it from an administrator app")
+        }
+        _ => Outcome::Failed(format!("failed (exit code {code}, 0x{:08X})", code as u32)),
+    }
+}
+
+fn choco_outcome(code: i32) -> Outcome {
+    match code {
+        0 => Outcome::Done,
+        3010 | 1641 => Outcome::Restart,
+        _ => Outcome::Failed(format!("failed (exit code {code})")),
+    }
+}
+
 fn log_download(engine: &Engine, key: &str) {
     if let Some((_, who, url)) = DOWNLOADS.iter().find(|(k, _, _)| *k == key) {
         engine.log("info", format!("Downloads from {who}: {url}"));
@@ -110,7 +176,8 @@ pub enum Job {
     UninstallApps(Vec<String>, Manager),
     UpgradeAll(Manager),
     DetectApps(Manager),
-    RunTweaks(Vec<String>),
+    /// The ticked tweaks, and the DNS provider picked beside them ("Default" leaves DNS as it is).
+    RunTweaks(Vec<String>, String),
     UndoTweaks(Vec<String>),
     DetectTweaks,
     Toggle(String, bool),
@@ -125,17 +192,78 @@ pub enum Job {
     RefreshStates,
 }
 
+impl Job {
+    /// Work that changes the system in bulk. Only one is queued at a time: asking
+    /// for another while one is queued or running is refused, so a double click
+    /// can't run it twice. Toggles, drop-downs and read-only checks just queue.
+    fn exclusive(&self) -> bool {
+        matches!(
+            self,
+            Job::InstallApps(..)
+                | Job::UninstallApps(..)
+                | Job::UpgradeAll(_)
+                | Job::RunTweaks(..)
+                | Job::UndoTweaks(_)
+                | Job::Features(_)
+                | Job::Function(..)
+                | Job::RemoveAppx(_)
+                | Job::ReinstallAppx(_)
+        )
+    }
+
+    /// Runs without a status line, and doesn't count as work in progress.
+    fn quiet(&self) -> bool {
+        matches!(self, Job::RefreshStates)
+    }
+}
+
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
     Log { text: String, kind: &'static str },
-    Busy { label: String },
+    Busy { label: String, exclusive: bool },
     Progress { done: usize, total: usize },
-    Done { label: String, ok: bool },
+    Done { label: String, ok: bool, exclusive: bool },
     InstalledApps { keys: Vec<String> },
     AppliedTweaks { keys: Vec<String> },
     States { toggles: Map<String, Value>, combos: Map<String, Value> },
     InstalledAppx { keys: Vec<String> },
+    /// Nothing is queued or running any more.
+    Idle,
+}
+
+/// Where jobs go. Counts what's queued, so the window knows whether closing now
+/// would cut work off, and refuses a second bulk job while one is under way.
+pub struct Jobs {
+    tx: mpsc::Sender<Job>,
+    /// Jobs queued or running, not counting quiet ones.
+    pending: Arc<AtomicUsize>,
+    /// Of those, the exclusive ones: never more than one.
+    exclusive: Arc<AtomicUsize>,
+}
+
+impl Jobs {
+    /// Queues a job. Err when it's bulk work and other bulk work is already queued
+    /// or running. Only the window's thread sends, so the check can't race another send.
+    pub fn send(&self, job: Job) -> Result<(), ()> {
+        if job.exclusive() {
+            if self.exclusive.load(Ordering::SeqCst) > 0 {
+                return Err(());
+            }
+            self.exclusive.fetch_add(1, Ordering::SeqCst);
+        }
+        if !job.quiet() {
+            self.pending.fetch_add(1, Ordering::SeqCst);
+        }
+        // The worker lives as long as the process.
+        let _ = self.tx.send(job);
+        Ok(())
+    }
+
+    /// Whether anything is queued or running.
+    pub fn busy(&self) -> bool {
+        self.pending.load(Ordering::SeqCst) > 0
+    }
 }
 
 pub struct Engine {
@@ -193,7 +321,7 @@ fn list(v: &Value, key: &str) -> Vec<Value> {
 }
 
 /// Starts the worker; returns where to send jobs.
-pub fn start(emit: Arc<dyn Fn(Event) + Send + Sync>) -> mpsc::Sender<Job> {
+pub fn start(emit: Arc<dyn Fn(Event) + Send + Sync>) -> Jobs {
     let engine = Engine {
         apps: parse(APPLICATIONS),
         tweaks: parse(TWEAKS),
@@ -202,12 +330,21 @@ pub fn start(emit: Arc<dyn Fn(Event) + Send + Sync>) -> mpsc::Sender<Job> {
         emit,
     };
     let (tx, rx) = mpsc::channel::<Job>();
+    let (pending, exclusive) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let (worker_pending, worker_exclusive) = (pending.clone(), exclusive.clone());
     std::thread::spawn(move || {
         for job in rx {
+            let (bulk, quiet) = (job.exclusive(), job.quiet());
             engine.run(job);
+            if bulk {
+                worker_exclusive.fetch_sub(1, Ordering::SeqCst);
+            }
+            if !quiet && worker_pending.fetch_sub(1, Ordering::SeqCst) == 1 {
+                (engine.emit)(Event::Idle);
+            }
         }
     });
-    tx
+    Jobs { tx, pending, exclusive }
 }
 
 impl Engine {
@@ -229,7 +366,7 @@ impl Engine {
             Job::UninstallApps(..) => "Uninstalling apps",
             Job::UpgradeAll(_) => "Upgrading all apps",
             Job::DetectApps(_) => "Checking installed apps",
-            Job::RunTweaks(_) => "Running tweaks",
+            Job::RunTweaks(..) => "Running tweaks",
             Job::UndoTweaks(_) => "Undoing tweaks",
             Job::DetectTweaks => "Checking applied tweaks",
             Job::Toggle(..) => "Changing a setting",
@@ -245,9 +382,9 @@ impl Engine {
             Job::Function(_, l) => l.clone(),
             _ => label.to_string(),
         };
-        let quiet = matches!(job, Job::RefreshStates);
+        let (exclusive, quiet) = (job.exclusive(), job.quiet());
         if !quiet {
-            (self.emit)(Event::Busy { label: label.clone() });
+            (self.emit)(Event::Busy { label: label.clone(), exclusive });
             self.log("head", label.clone());
         }
         let result = match job {
@@ -255,8 +392,8 @@ impl Engine {
             Job::UninstallApps(keys, m) => self.packages("uninstall", &keys, m),
             Job::UpgradeAll(m) => self.upgrade_all(m),
             Job::DetectApps(m) => self.detect_apps(m),
-            Job::RunTweaks(keys) => self.tweaks_batch(&keys, false),
-            Job::UndoTweaks(keys) => self.tweaks_batch(&keys, true),
+            Job::RunTweaks(keys, dns) => self.run_tweaks(&keys, &dns),
+            Job::UndoTweaks(keys) => self.undo_tweaks(&keys),
             Job::DetectTweaks => self.detect_tweaks(),
             Job::Toggle(key, on) => {
                 let r = self.apply_tweak(&key, !on);
@@ -283,7 +420,7 @@ impl Engine {
                 Ok(()) => self.log("ok", format!("{label}: done")),
                 Err(e) => self.log("error", format!("{label}: {e}")),
             }
-            (self.emit)(Event::Done { label, ok: result.is_ok() });
+            (self.emit)(Event::Done { label, ok: result.is_ok(), exclusive });
         }
     }
 
@@ -305,7 +442,11 @@ impl Engine {
             Manager::Winget => ("winget.exe", "Use Config → Fixes → WinGet - Reinstall, or switch to Chocolatey."),
             Manager::Choco => ("choco.exe", "Install Chocolatey from chocolatey.org, or switch to WinGet."),
         };
-        let found = Command::new("where.exe").arg(exe).creation_flags_no_window().output().is_ok_and(|o| o.status.success());
+        let found = Command::new(sys::system_tool("where.exe"))
+            .arg(exe)
+            .creation_flags_no_window()
+            .output()
+            .is_ok_and(|o| o.status.success());
         if found { Ok(()) } else { Err(format!("{exe} isn't installed. {hint}")) }
     }
 
@@ -335,24 +476,31 @@ impl Engine {
                 }
                 Manager::Choco => sys::run(Command::new("choco").args([action, &id, "-y", "--no-progress"]), &self.info())?,
             };
-            match (m, code) {
-                (_, 0) => self.log("ok", format!("{name}: done")),
-                // winget: already installed / no newer version / restart needed to finish.
-                (Manager::Winget, -1978335189) | (Manager::Winget, -1978335212) => {
-                    self.log("ok", format!("{name}: already installed and up to date"))
-                }
-                (Manager::Winget, -1978334967) | (Manager::Winget, -1978334965) => {
-                    self.log("ok", format!("{name}: done; a restart is needed to finish"))
-                }
-                (Manager::Choco, 3010) => self.log("ok", format!("{name}: done; a restart is needed to finish")),
-                _ => {
-                    failed += 1;
-                    self.log("error", format!("{name}: failed (exit code {code})"));
-                }
+            let outcome = match m {
+                Manager::Winget => winget_outcome(code, action),
+                Manager::Choco => choco_outcome(code),
+            };
+            if self.report(&name, outcome) {
+                failed += 1;
             }
         }
         self.progress(keys.len(), keys.len());
         if failed > 0 { Err(format!("{failed} of {} didn't finish", keys.len())) } else { Ok(()) }
+    }
+
+    /// Logs what happened to one package. True when it failed.
+    fn report(&self, name: &str, outcome: Outcome) -> bool {
+        match outcome {
+            Outcome::Done => self.log("ok", format!("{name}: done")),
+            Outcome::Restart => self.log("ok", format!("{name}: done; a restart is needed to finish")),
+            Outcome::Nothing(why) => self.log("ok", format!("{name}: {why}")),
+            Outcome::Skipped(why) => self.log("warn", format!("{name}: {why}")),
+            Outcome::Failed(why) => {
+                self.log("error", format!("{name}: {why}"));
+                return true;
+            }
+        }
+        false
     }
 
     fn upgrade_all(&self, m: Manager) -> Result<(), String> {
@@ -367,7 +515,26 @@ impl Engine {
             )?,
             Manager::Choco => sys::run(Command::new("choco").args(["upgrade", "all", "-y", "--no-progress"]), &self.info())?,
         };
-        if code == 0 { Ok(()) } else { Err(format!("finished with exit code {code}")) }
+        let outcome = match m {
+            // With nothing to upgrade, WinGet answers as it would for one package.
+            Manager::Winget if code == WINGET_NO_APPLICATIONS_FOUND || code == WINGET_UPDATE_NOT_APPLICABLE => {
+                Outcome::Nothing("everything is up to date")
+            }
+            Manager::Winget => winget_outcome(code, "upgrade"),
+            Manager::Choco => choco_outcome(code),
+        };
+        match outcome {
+            Outcome::Failed(_) => Err(format!("finished with exit code {code}")),
+            Outcome::Restart => {
+                self.log("ok", "A restart is needed to finish some upgrades");
+                Ok(())
+            }
+            Outcome::Nothing(why) => {
+                self.log("ok", why);
+                Ok(())
+            }
+            Outcome::Done | Outcome::Skipped(_) => Ok(()),
+        }
     }
 
     fn detect_apps(&self, m: Manager) -> Result<(), String> {
@@ -404,11 +571,47 @@ impl Engine {
 
     // --------------------------------------------------------------- tweaks
 
-    fn tweaks_batch(&self, keys: &[String], undo: bool) -> Result<(), String> {
+    /// WinUtil's Invoke-WPFtweaksbutton: the restore point first, so it holds the
+    /// state before anything else changes, then the DNS provider, then the rest.
+    /// If the restore point or the DNS change fails, nothing after it runs.
+    fn run_tweaks(&self, keys: &[String], dns: &str) -> Result<(), String> {
+        let set_dns = !dns.is_empty() && dns != "Default";
+        let order = run_order(keys);
+        let total = order.len() + set_dns as usize;
+        let mut rest = order.as_slice();
+        let mut done = 0;
+        if rest.first() == Some(&RESTORE_POINT) {
+            self.progress(done, total);
+            self.apply_tweak(RESTORE_POINT, false).map_err(|e| {
+                format!("{e}. Without the restore point the other tweaks weren't run; untick Restore Point - Create to run them without one")
+            })?;
+            rest = &rest[1..];
+            done += 1;
+        }
+        if set_dns {
+            self.progress(done, total);
+            self.set_dns(dns).map_err(|e| format!("{e}. DNS couldn't be changed, so the remaining tweaks weren't applied"))?;
+            done += 1;
+        }
+        let mut failed = 0;
+        for key in rest {
+            self.progress(done, total);
+            if let Err(e) = self.apply_tweak(key, false) {
+                failed += 1;
+                self.log("error", e);
+            }
+            done += 1;
+        }
+        self.progress(total, total);
+        self.send_states();
+        if failed > 0 { Err(format!("{failed} of {} had errors", rest.len())) } else { Ok(()) }
+    }
+
+    fn undo_tweaks(&self, keys: &[String]) -> Result<(), String> {
         let mut failed = 0;
         for (i, key) in keys.iter().enumerate() {
             self.progress(i, keys.len());
-            if let Err(e) = self.apply_tweak(key, undo) {
+            if let Err(e) = self.apply_tweak(key, true) {
                 failed += 1;
                 self.log("error", e);
             }
@@ -416,6 +619,22 @@ impl Engine {
         self.progress(keys.len(), keys.len());
         self.send_states();
         if failed > 0 { Err(format!("{failed} of {} had errors", keys.len())) } else { Ok(()) }
+    }
+
+    /// WinUtil's Set-WinUtilDNS on every connected adapter. It reports failure by
+    /// returning false rather than throwing, which is turned into an error here.
+    fn set_dns(&self, provider: &str) -> Result<(), String> {
+        let choices = self.tweaks.get("WPFchangedns").map(|t| s(t, "ComboItems")).unwrap_or_default();
+        if provider == "Default" || !choices.split(' ').any(|c| c == provider) {
+            return Err(format!("{provider} isn't one of the DNS choices"));
+        }
+        self.log("info", format!("Setting DNS to {provider}"));
+        let p = provider.replace('\'', "''");
+        self.run_script(&format!(
+            "$result = @(Set-WinUtilDNS -DNSProvider '{p}')\n\
+             $result | Where-Object {{ $_ -isnot [bool] }} | Out-Host\n\
+             if ($result.Count -eq 0 -or $result[-1] -ne $true) {{ throw 'Setting DNS to {p} failed' }}\n"
+        ))
     }
 
     /// WinUtil's Invoke-WinUtilTweaks: services, then registry, then scripts.
@@ -508,8 +727,7 @@ impl Engine {
 
     fn combo(&self, key: &str, state: &str) -> Result<(), String> {
         if key == "WPFchangedns" {
-            self.log("info", format!("Setting DNS to {state}"));
-            return self.run_script(&format!("Set-WinUtilDNS -DNSProvider '{}'", state.replace('\'', "''")));
+            return Err("DNS is set with Run Tweaks".into());
         }
         let tweak = self.tweaks.get(key).ok_or_else(|| format!("unknown setting {key}"))?;
         self.log("info", format!("{}: {state}", s(tweak, "Content")));
@@ -578,7 +796,13 @@ impl Engine {
             for feature in list(entry, "feature") {
                 let Some(name) = feature.as_str() else { continue };
                 let code = sys::run(
-                    Command::new("dism.exe").args(["/online", "/enable-feature", &format!("/featurename:{name}"), "/all", "/norestart"]),
+                    Command::new(sys::system_tool("dism.exe")).args([
+                        "/online",
+                        "/enable-feature",
+                        &format!("/featurename:{name}"),
+                        "/all",
+                        "/norestart",
+                    ]),
                     &self.info(),
                 )?;
                 // 3010: done, restart needed.
@@ -640,9 +864,8 @@ impl Engine {
                 ]),
                 &self.info(),
             )?;
-            if code != 0 && code != -1978335189 {
+            if self.report(name, winget_outcome(code, "install")) {
                 failed += 1;
-                self.log("error", format!("{name}: failed (exit code {code})"));
             }
         }
         self.progress(keys.len(), keys.len());
@@ -651,7 +874,7 @@ impl Engine {
     }
 
     fn detect_appx(&self) -> Result<(), String> {
-        let output = Command::new("powershell.exe")
+        let output = Command::new(sys::powershell())
             .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "try { Get-AppxPackage -AllUsers -ErrorAction Stop | ForEach-Object Name } catch { Get-AppxPackage | ForEach-Object Name }"])
             .creation_flags_no_window()
             .output()
@@ -673,10 +896,9 @@ impl Engine {
     // --------------------------------------------------------------- scripts
 
     /// Runs PowerShell with RustWinUtil's stand-ins and WinUtil's functions loaded,
-    /// streaming its output to the log.
+    /// streaming its output to the log. Anything it writes to its error stream is
+    /// logged as an error and fails the step, as a logged error does in WinUtil.
     fn run_script(&self, body: &str) -> Result<(), String> {
-        let dir = crate::data_dir().join("run");
-        std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         let mut script = PRELUDE.replace("{{DNS_JSON}}", DNS);
         for f in FUNCTIONS {
             script.push('\n');
@@ -688,19 +910,47 @@ impl Engine {
 
         // Windows PowerShell reads a script without a byte-order mark as the ANSI
         // code page, which would mangle anything outside ASCII.
-        let path = dir.join("job.ps1");
         let mut bytes = vec![0xEF, 0xBB, 0xBF];
         bytes.extend_from_slice(script.as_bytes());
-        std::fs::write(&path, bytes).map_err(|e| format!("couldn't write {} ({e})", path.display()))?;
 
-        let code = sys::run(
-            Command::new("powershell.exe")
+        // A copy beside the exe to read afterwards. It's never the one that runs: that
+        // folder may be one the user can write to, and then any program could swap the
+        // script between being written and being run as administrator.
+        let kept = crate::data_dir().join("run");
+        if std::fs::create_dir_all(&kept).is_ok() {
+            let _ = std::fs::write(kept.join("last-job.ps1"), &bytes);
+        }
+        // The one that runs, along with anything it downloads, goes in a folder only
+        // administrators can open. Without elevation there's nothing to protect, and
+        // it runs from beside the exe.
+        let private = sys::private_dir("RustWinUtil");
+        let dir = private.clone().unwrap_or(kept);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+        let path = dir.join("job.ps1");
+        std::fs::write(&path, &bytes).map_err(|e| format!("couldn't write {} ({e})", path.display()))?;
+
+        let errors = Cell::new(0usize);
+        let code = sys::run_split(
+            Command::new(sys::powershell())
                 .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
                 .arg(&path)
                 .env("RUSTWINUTIL_WORKDIR", &dir),
             &self.info(),
-        )?;
-        if code == 0 { Ok(()) } else { Err(format!("PowerShell exited with code {code}")) }
+            &|line| {
+                errors.set(errors.get() + 1);
+                self.log("error", line);
+            },
+        );
+        if let Some(private) = private {
+            // Anything the script started from there (O&O ShutUp10++, AutoLogon) keeps its
+            // exe in use, and that much stays until Windows clears its Temp folder.
+            let _ = std::fs::remove_dir_all(private);
+        }
+        match (code?, errors.get()) {
+            (0, 0) => Ok(()),
+            (0, _) => Err("PowerShell reported errors (see the log)".into()),
+            (code, _) => Err(format!("PowerShell exited with code {code}")),
+        }
     }
 }
 
@@ -764,6 +1014,61 @@ mod tests {
         let states = log.iter().find(|e| e.contains("\"states\"")).expect("states event");
         println!("{}", log.iter().find(|e| e.contains("appliedTweaks")).unwrap());
         assert!(states.contains("WPFToggleDarkMode"));
+    }
+
+    /// The restore point leads every run that includes it, presets included.
+    #[test]
+    fn restore_point_runs_first() {
+        let keys: Vec<String> = ["WPFTweaksActivity", RESTORE_POINT, "WPFTweaksTelemetry"].map(String::from).to_vec();
+        assert_eq!(run_order(&keys), [RESTORE_POINT, "WPFTweaksActivity", "WPFTweaksTelemetry"]);
+        for (name, preset) in parse(PRESETS) {
+            let keys: Vec<String> = preset.as_array().unwrap().iter().filter_map(|k| k.as_str().map(String::from)).collect();
+            if keys.iter().any(|k| k == RESTORE_POINT) {
+                assert_eq!(run_order(&keys)[0], RESTORE_POINT, "{name}");
+            }
+        }
+    }
+
+    /// Exit codes as WinGet's AppInstallerErrors.h defines them.
+    #[test]
+    fn winget_exit_codes() {
+        assert_eq!(winget_outcome(0, "install"), Outcome::Done);
+        // 0x8A150014: no package found. Nothing was installed.
+        assert!(matches!(winget_outcome(-1978335212, "install"), Outcome::Failed(_)));
+        assert!(matches!(winget_outcome(-1978335212, "uninstall"), Outcome::Skipped(_)));
+        // 0x8A15002B no applicable update, 0x8A150061 already installed.
+        assert!(matches!(winget_outcome(-1978335189, "install"), Outcome::Nothing(_)));
+        assert!(matches!(winget_outcome(-1978335135, "install"), Outcome::Nothing(_)));
+        // 0x8A150109 / 0x8A15010B: installed, restart to finish.
+        assert_eq!(winget_outcome(-1978334967, "install"), Outcome::Restart);
+        assert_eq!(winget_outcome(-1978334965, "install"), Outcome::Restart);
+        // 0x8A15007D: installed for the user only, so elevated WinGet won't touch it.
+        assert!(matches!(winget_outcome(-1978335107, "install"), Outcome::Skipped(_)));
+        assert!(matches!(winget_outcome(-1978335107, "uninstall"), Outcome::Failed(_)));
+        assert!(matches!(winget_outcome(1, "install"), Outcome::Failed(_)));
+    }
+
+    /// Only the drop-down's own choices reach PowerShell. Changes nothing.
+    #[test]
+    fn dns_choices_are_checked() {
+        let (engine, _) = engine();
+        assert!(engine.set_dns("Google'; Remove-Item C:\\ -Recurse #").is_err());
+        assert!(engine.set_dns("Default").is_err());
+    }
+
+    /// A second bulk job is refused while one is queued; toggles still queue.
+    #[test]
+    fn one_bulk_job_at_a_time() {
+        // No worker: nothing sent here ever runs.
+        let (tx, _rx) = mpsc::channel();
+        let jobs = Jobs { tx, pending: Arc::new(AtomicUsize::new(0)), exclusive: Arc::new(AtomicUsize::new(0)) };
+        assert!(!jobs.busy());
+        assert!(jobs.send(Job::RefreshStates).is_ok());
+        assert!(!jobs.busy(), "a quiet refresh isn't work in progress");
+        assert!(jobs.send(Job::RunTweaks(vec![], "Default".into())).is_ok());
+        assert!(jobs.busy());
+        assert!(jobs.send(Job::RunTweaks(vec![], "Default".into())).is_err());
+        assert!(jobs.send(Job::Toggle("WPFToggleDarkMode".into(), true)).is_ok());
     }
 
     /// Lists installed apps with winget and AppX packages. Read-only.

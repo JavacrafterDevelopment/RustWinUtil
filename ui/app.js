@@ -26,11 +26,18 @@ const state = {
   installedApps: new Set(),
   collapsed: new Set(),
   appliedTweaks: new Set(),
+  /* Ticked tweak and feature checkboxes, kept here so a search can't drop them. */
+  ticked: new Set(),
+  /* The DNS provider for the next Run Tweaks; "Default" leaves DNS as it is. */
+  dns: 'Default',
   toggles: {},
   combos: {},
   selectedAppx: new Set(),
   installedAppx: new Set(),
   busy: false,
+  busyLabel: '',
+  /* The bulk job running, if any: only one at a time (the host refuses a second). */
+  exclusive: '',
   logOpen: false,
 };
 
@@ -168,16 +175,21 @@ function selectedApps() {
   return [...state.selectedApps];
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const byName = (a, b) => a.localeCompare(b);
+
 $('act-install').addEventListener('click', () => {
   const keys = selectedApps();
-  if (keys) post({ cmd: 'job', kind: 'install', keys });
+  if (keys && notBusy()) post({ cmd: 'job', kind: 'install', keys });
 });
 $('act-uninstall').addEventListener('click', () => {
   const keys = selectedApps();
-  if (keys) confirmThen('Uninstall these apps?', `${keys.length} app${keys.length > 1 ? 's' : ''} will be removed with ${pmName()}.`,
-    () => post({ cmd: 'job', kind: 'uninstall', keys }));
+  if (!keys || !notBusy()) return;
+  confirmThen('Uninstall these apps?', `${plural(keys.length, 'app')} will be removed with ${pmName()}:`,
+    () => post({ cmd: 'job', kind: 'uninstall', keys }),
+    { items: keys.map((k) => BOOT.apps[k]?.content || k).sort(byName) });
 });
-$('act-upgrade').addEventListener('click', () => post({ cmd: 'job', kind: 'upgradeAll' }));
+$('act-upgrade').addEventListener('click', () => notBusy() && post({ cmd: 'job', kind: 'upgradeAll' }));
 $('sel-clear').addEventListener('click', () => { state.selectedApps.clear(); renderApps(); });
 $('sel-collapse').addEventListener('click', () => { categories.forEach((c) => state.collapsed.add(c)); renderApps(); });
 $('sel-expand').addEventListener('click', () => { state.collapsed.clear(); renderApps(); });
@@ -204,6 +216,24 @@ function panelGroups(config, panel, skip = () => false) {
   return cats.map((cat) => [cat, entries.filter((e) => e.category === cat)
     .sort((a, b) => rank(a) - rank(b) || a.Content.localeCompare(b.Content))]);
 }
+
+/* Every checkbox of a config in on-screen order, whatever the search is showing. */
+const checkboxOrder = (config) => [1, 2]
+  .flatMap((p) => panelGroups(config, p).flatMap(([, list]) => list))
+  .filter((e) => e.Type === undefined)
+  .map((e) => e.key);
+const tweakOrder = checkboxOrder(BOOT.tweaks);
+const featureOrder = checkboxOrder(BOOT.features);
+const tickedIn = (order) => order.filter((k) => state.ticked.has(k));
+
+/* Ticks exactly `keys` among one config's checkboxes. */
+function setTicked(order, keys) {
+  order.forEach((k) => state.ticked.delete(k));
+  keys.filter((k) => order.includes(k)).forEach((k) => state.ticked.add(k));
+}
+
+const DNS_HELP = 'Applied when you press Run Tweaks, after the restore point if that is ticked. '
+  + 'Default leaves DNS as it is; DHCP goes back to the automatic DNS your network hands out.';
 
 function helpMark(text) {
   const q = h('span', 'help', '?');
@@ -253,12 +283,15 @@ function tweakItem(e) {
       o.value = it;
       sel.append(o);
     }
-    sel.value = e.key === 'WPFchangedns' ? 'Default' : (state.combos[e.key] || items[0]);
+    // DNS only takes effect with Run Tweaks, as in WinUtil; the other drop-downs apply at once.
+    const dns = e.key === 'WPFchangedns';
+    sel.value = dns ? state.dns : (state.combos[e.key] || items[0]);
     sel.addEventListener('change', () => {
-      if (e.key === 'WPFchangedns' && sel.value === 'Default') return;
-      post({ cmd: 'job', kind: 'combo', key: e.key, state: sel.value });
+      if (dns) state.dns = sel.value;
+      else post({ cmd: 'job', kind: 'combo', key: e.key, state: sel.value });
     });
-    row.append(sel, helpMark(e.Description));
+    row.append(sel, helpMark(dns ? DNS_HELP : e.Description));
+    if (dns) sel.title = DNS_HELP;
     if (e.ComboDescriptions) sel.title = Object.entries(e.ComboDescriptions).map(([k, v]) => `${k}: ${v}`).join('\n');
     return row;
   }
@@ -266,6 +299,8 @@ function tweakItem(e) {
   const box = h('input');
   box.type = 'checkbox';
   box.dataset.key = e.key;
+  box.checked = state.ticked.has(e.key);
+  box.addEventListener('change', () => (box.checked ? state.ticked.add(e.key) : state.ticked.delete(e.key)));
   const label = h('label', 'label', e.Content);
   const id = `cb-${e.key}`;
   box.id = id;
@@ -280,8 +315,6 @@ function tweakItem(e) {
 }
 
 function renderGroups(target, groups) {
-  // Keep what's ticked across a re-render (search, theme, detection).
-  const ticked = new Set([...target.querySelectorAll('input[type=checkbox][data-key]:checked')].map((b) => b.dataset.key));
   target.replaceChildren(...groups.map(([cat, list]) => {
     const visible = list.filter((e) => matches(e.Content, e.Description));
     if (!visible.length) return h('span');
@@ -290,7 +323,6 @@ function renderGroups(target, groups) {
     for (const e of visible) g.append(tweakItem(e));
     return g;
   }));
-  target.querySelectorAll('input[type=checkbox][data-key]').forEach((b) => { b.checked = ticked.has(b.dataset.key); });
 }
 
 function renderTweaks() {
@@ -298,41 +330,59 @@ function renderTweaks() {
   renderGroups($('tweaks-2'), panelGroups(BOOT.tweaks, 2));
 }
 
-function checkedIn(...ids) {
-  return ids.flatMap((id) => [...$(id).querySelectorAll('input[type=checkbox][data-key]:checked')].map((b) => b.dataset.key));
-}
-
-function setChecked(ids, keys) {
-  const want = new Set(keys);
-  ids.forEach((id) => $(id).querySelectorAll('input[type=checkbox][data-key]').forEach((b) => { b.checked = want.has(b.dataset.key); }));
-}
-
-document.querySelectorAll('[data-preset]').forEach((b) =>
-  b.addEventListener('click', () => setChecked(['tweaks-1', 'tweaks-2'], BOOT.presets[b.dataset.preset] || [])));
-$('tw-clear').addEventListener('click', () => setChecked(['tweaks-1', 'tweaks-2'], []));
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+  setTicked(tweakOrder, BOOT.presets[b.dataset.preset] || []);
+  renderTweaks();
+}));
+$('tw-clear').addEventListener('click', () => { setTicked(tweakOrder, []); renderTweaks(); });
 $('tw-detect').addEventListener('click', () => post({ cmd: 'job', kind: 'detectTweaks' }));
 $('tw-appx').addEventListener('click', () => showTab('appx'));
 $('tw-run').addEventListener('click', () => {
-  const keys = checkedIn('tweaks-1', 'tweaks-2');
-  if (!keys.length) return logLine('warn', 'Tick at least one tweak first.'), openLog(true);
-  post({ cmd: 'job', kind: 'runTweaks', keys });
+  // Ticked tweaks run even if the search is hiding them; the host takes the restore point first.
+  const keys = tickedIn(tweakOrder);
+  if (!keys.length && state.dns === 'Default') {
+    return logLine('warn', 'Tick at least one tweak, or pick a DNS provider, first.'), openLog(true);
+  }
+  if (notBusy()) post({ cmd: 'job', kind: 'runTweaks', keys, dns: state.dns });
 });
 $('tw-undo').addEventListener('click', () => {
-  const keys = checkedIn('tweaks-1', 'tweaks-2');
+  const keys = tickedIn(tweakOrder);
   if (!keys.length) return logLine('warn', 'Tick the tweaks to undo first.'), openLog(true);
-  confirmThen('Undo these tweaks?', `${keys.length} tweak${keys.length > 1 ? 's' : ''} will be put back to Windows' defaults.`,
-    () => post({ cmd: 'job', kind: 'undoTweaks', keys }));
+  if (!notBusy()) return;
+  confirmThen('Undo these tweaks?', `${plural(keys.length, 'tweak')} will be put back to Windows' defaults:`,
+    () => post({ cmd: 'job', kind: 'undoTweaks', keys }),
+    { items: keys.map((k) => BOOT.tweaks[k].Content) });
 });
+
+/* Fixes that change much more than their names say: each asks first, saying what it does. */
+const CONFIRM_BUTTON = {
+  WPFFixesUpdate: ['Reset Windows Update?',
+    'This is a heavy reset. Besides Windows Update itself, it deletes every Windows policy setting in the registry '
+    + '(including any from your work or school, and many of the tweaks applied here), resets the local security '
+    + 'policy, deletes the local Group Policy folders, and resets the network stack and proxy settings. '
+    + 'Restart Windows afterwards.'],
+  WPFFixesNetwork: ['Reset the network?',
+    'Resets Winsock and TCP/IP to their defaults, which can remove static IP addresses and other custom network '
+    + 'settings. Restart Windows afterwards.'],
+  WPFRemoveUltPerf: ['Restore the default power plans?',
+    "This puts back Windows' default power plans and deletes every other one, including any your PC's maker "
+    + 'added, not just Ultimate Performance.'],
+};
 
 /* Buttons in tweaks and config call one of WinUtil's functions on the host. */
 function runButton(e) {
   if (e.key === 'WPFFeatureInstall') {
-    const keys = checkedIn('config-1', 'config-2');
+    const keys = tickedIn(featureOrder);
     if (!keys.length) return logLine('warn', 'Tick the features to install first.'), openLog(true);
-    return post({ cmd: 'job', kind: 'features', keys });
+    if (notBusy()) post({ cmd: 'job', kind: 'features', keys });
+    return;
   }
   if (e.category === 'Legacy Windows Panels' && !e.function) return post({ cmd: 'panel', key: e.key });
-  post({ cmd: 'job', kind: 'function', key: e.key, label: e.Content });
+  if (!notBusy()) return;
+  const go = () => post({ cmd: 'job', kind: 'function', key: e.key, label: e.Content });
+  const ask = CONFIRM_BUTTON[e.key];
+  if (ask) confirmThen(ask[0], ask[1], go);
+  else go();
 }
 
 function renderConfig() {
@@ -386,19 +436,23 @@ $('ax-detect').addEventListener('click', () => post({ cmd: 'job', kind: 'detectA
 $('ax-remove').addEventListener('click', () => {
   const keys = [...state.selectedAppx];
   if (!keys.length) return logLine('warn', 'Tick the AppX packages to remove first.'), openLog(true);
-  confirmThen('Remove these apps for every user?', `${keys.length} built-in app${keys.length > 1 ? 's' : ''} will be removed. Reinstall Selected can bring them back from the Microsoft Store.`,
-    () => post({ cmd: 'job', kind: 'removeAppx', keys }));
+  if (!notBusy()) return;
+  confirmThen('Remove these apps for every user?',
+    `${plural(keys.length, 'built-in app')} will be removed. Reinstall Selected can bring them back from the Microsoft Store:`,
+    () => post({ cmd: 'job', kind: 'removeAppx', keys }),
+    { items: keys.map((k) => BOOT.appx[k]?.Content || k).sort(byName) });
 });
 $('ax-reinstall').addEventListener('click', () => {
   const keys = [...state.selectedAppx];
   if (!keys.length) return logLine('warn', 'Tick the AppX packages to reinstall first.'), openLog(true);
-  post({ cmd: 'job', kind: 'reinstallAppx', keys });
+  if (notBusy()) post({ cmd: 'job', kind: 'reinstallAppx', keys });
 });
 
 /* ------------------------------------------------------------------ updates */
 
 const UPDATE_LABELS = { recommended: 'Applying the Recommended update profile', default: 'Restoring Windows Update defaults', disable: 'Disabling Windows Update' };
 document.querySelectorAll('[data-update]').forEach((b) => b.addEventListener('click', () => {
+  if (!notBusy()) return;
   const kind = b.dataset.update;
   const go = () => post({ cmd: 'job', kind: 'function', key: kind, label: UPDATE_LABELS[kind] });
   if (kind === 'disable') {
@@ -434,12 +488,28 @@ function setStatus(text, lamp) {
   $('lamp').className = lamp || '';
 }
 
+/* Bulk work runs one job at a time. The host refuses a second one anyway; this
+   says so before any question is asked. */
+function notBusy() {
+  if (!state.exclusive) return true;
+  logLine('warn', `${state.exclusive} hasn't finished yet. Wait for it, then try again.`);
+  openLog(true);
+  return false;
+}
+
 /* ------------------------------------------------------------------- dialog */
 
 let dialogGo = null;
-function confirmThen(title, text, go) {
+/* `items` are listed under the text, so a question says exactly what it will act on. */
+function confirmThen(title, text, go, { items = [], ok = 'Continue', cancel = 'Cancel', danger = true } = {}) {
   $('dlg-title').textContent = title;
   $('dlg-text').textContent = text;
+  $('dlg-list').replaceChildren(...items.map((n) => h('li', null, n)));
+  $('dlg-list').classList.toggle('on', items.length > 0);
+  $('dlg-ok').textContent = ok;
+  $('dlg-ok').classList.toggle('danger', danger);
+  $('dlg-ok').classList.toggle('primary', !danger);
+  $('dlg-cancel').textContent = cancel;
   dialogGo = go;
   $('dialogwrap').classList.add('on');
 }
@@ -455,10 +525,12 @@ window.onHost = (msg) => {
   switch (msg.type) {
     case 'log':
       logLine(msg.kind, msg.text);
-      if (msg.kind === 'error') openLog(true);
+      if (msg.kind === 'error' || msg.open) openLog(true);
       break;
     case 'busy':
       state.busy = true;
+      state.busyLabel = msg.label;
+      if (msg.exclusive) state.exclusive = msg.label;
       setStatus(`${msg.label}…`, 'busy');
       $('progress').classList.remove('on');
       openLog(true);
@@ -469,8 +541,23 @@ window.onHost = (msg) => {
       break;
     case 'done':
       state.busy = false;
+      if (msg.exclusive) state.exclusive = '';
       $('progress').classList.remove('on');
       setStatus(msg.ok ? `${msg.label}: done` : `${msg.label}: finished with errors (see the log)`, msg.ok ? '' : 'bad');
+      break;
+    case 'idle':
+      state.busy = false;
+      state.busyLabel = '';
+      state.exclusive = '';
+      break;
+    case 'closeWhileBusy':
+      // ✕, Alt+F4 or the launcher's Stop while a job runs. Closing anyway would cut it off.
+      confirmThen('RustWinUtil is still working',
+        `${state.busyLabel || 'A job'} hasn't finished. Closing now would stop it partway, which could leave Windows `
+        + 'half changed, and anything queued after it would not run. RustWinUtil can hide its window now and close '
+        + 'by itself once the work is done.',
+        () => post({ cmd: 'window', action: 'closeWhenDone' }),
+        { ok: 'Close when done', cancel: 'Keep open', danger: false });
       break;
     case 'installedApps':
       state.installedApps = new Set(msg.keys);
@@ -479,8 +566,8 @@ window.onHost = (msg) => {
       break;
     case 'appliedTweaks':
       state.appliedTweaks = new Set(msg.keys);
+      setTicked(tweakOrder, msg.keys);
       renderTweaks();
-      setChecked(['tweaks-1', 'tweaks-2'], msg.keys);
       break;
     case 'states':
       state.toggles = msg.toggles;
@@ -523,6 +610,12 @@ $('theme').addEventListener('click', () => {
   post({ cmd: 'settings', theme });
 });
 document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input[type=text], #log')) e.preventDefault(); });
+/* Nothing is ever dropped here: a dropped file or link would otherwise replace this page.
+   The host turns outside drops off as well. */
+['dragover', 'drop'].forEach((type) => document.addEventListener(type, (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+}));
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('dialogwrap').classList.contains('on')) $('dialogwrap').classList.remove('on');
   if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); }
