@@ -52,27 +52,27 @@
   --ink-soft:     #C4C4C4;
   --ink-faint:    #8E8E8E;
   --ink-ghost:    #666666;
-  --walnut:       #D2AA5E;
-  --walnut-deep:  #E9CB8E;
-  --walnut-wash:  #2A2418;
-  --gilt:         #D9B26A;
-  --gilt-wash:    #3A3020;
-  /* Headings and accent text in blue rather than gold at night; gold fills stay. */
+  --walnut:       #2F74C8;
+  --walnut-deep:  #3A86DC;
+  --walnut-wash:  #142235;
+  --gilt:         #5AA9F0;
+  --gilt-wash:    #16263A;
+  /* Night is blue: fills, borders, accent text and the wrench, where the day is walnut and gilt. */
   --accent-text:  #8CC4FF;
   --accent-soft:  #5AA9F0;
   --danger:       #E5534B;
   --danger-wash:  #34201B;
   --ok:           #8FB866;
   --ok-wash:      #1F2A19;
-  --on-accent:    #141109;
+  --on-accent:    #FFFFFF;
   --header-top:   #181818;
   --status-btm:   #0D0D0D;
-  --focus-ring:   rgba(217, 178, 106, .25);
+  --focus-ring:   rgba(90, 169, 240, .28);
   --shadow-drop:  rgba(0, 0, 0, .7);
   --shadow-soft:  0 1px 2px rgba(0, 0, 0, .5), 0 6px 20px rgba(0, 0, 0, .45);
   --mk-shield:    #2C2C2C;
   --mk-face:      #3A3A3A;
-  --mk-wrench:    #F2C46B;
+  --mk-wrench:    #5AA9F0;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
