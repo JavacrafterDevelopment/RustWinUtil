@@ -2,14 +2,14 @@
   "schema": 1,
   "channels": {
     "beta": {
-      "version": "0.0.2",
-      "published": "2026-10-15T04:09:40Z",
-      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/compare/v0.0.1...v0.0.2",
-      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.2",
+      "version": "0.0.3",
+      "published": "2026-10-15T05:24:31Z",
+      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/compare/v0.0.2...v0.0.3",
+      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.3",
       "package": {
-        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.2/RustWinUtil-windows-x64.zip",
-        "size": 800391,
-        "sha256": "c517721c7359c1bcdc75abbf47a286dad6885a6fa6f890842689c279365347f2"
+        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.3/RustWinUtil-windows-x64.zip",
+        "size": 811289,
+        "sha256": "1f72dceff88403e72108ee03be0659af66d43bd8ee68bbb9c7984d7f58ad8ead"
       },
       "exe": "RustWinUtil.exe",
       "files": [
@@ -30,20 +30,20 @@
         },
         {
           "path": "RustWinUtil.exe",
-          "size": 1617920,
-          "sha256": "aa532a418f8af92d504985b75e47fe1397718eb0491971f87c4f01984d06d1a6"
+          "size": 1640960,
+          "sha256": "a2090c1002c5d82bba3b4a11cd7da7f63c4fcb541f8948f2a7ffc1aa1c263fe5"
         }
       ]
     },
     "stable": {
-      "version": "0.0.2",
-      "published": "2026-10-15T04:09:40Z",
-      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/compare/v0.0.1...v0.0.2",
-      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.2",
+      "version": "0.0.3",
+      "published": "2026-10-15T05:24:31Z",
+      "notes": "**Full Changelog**: https://github.com/JavacrafterDevelopment/RustWinUtil/compare/v0.0.2...v0.0.3",
+      "page": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/tag/v0.0.3",
       "package": {
-        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.2/RustWinUtil-windows-x64.zip",
-        "size": 800391,
-        "sha256": "c517721c7359c1bcdc75abbf47a286dad6885a6fa6f890842689c279365347f2"
+        "url": "https://github.com/JavacrafterDevelopment/RustWinUtil/releases/download/v0.0.3/RustWinUtil-windows-x64.zip",
+        "size": 811289,
+        "sha256": "1f72dceff88403e72108ee03be0659af66d43bd8ee68bbb9c7984d7f58ad8ead"
       },
       "exe": "RustWinUtil.exe",
       "files": [
@@ -64,8 +64,8 @@
         },
         {
           "path": "RustWinUtil.exe",
-          "size": 1617920,
-          "sha256": "aa532a418f8af92d504985b75e47fe1397718eb0491971f87c4f01984d06d1a6"
+          "size": 1640960,
+          "sha256": "a2090c1002c5d82bba3b4a11cd7da7f63c4fcb541f8948f2a7ffc1aa1c263fe5"
         }
       ]
     }
