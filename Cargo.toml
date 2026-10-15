@@ -1,6 +1,6 @@
 [package]
 name = "rustwinutil"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 description = "A portable Rust take on Chris Titus Tech's WinUtil: install apps, apply tweaks, fix Windows."
 license = "MIT OR Apache-2.0"
